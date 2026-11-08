@@ -279,7 +279,7 @@ var deleteSelected;
         onPress: exitSelection
     });
     var options = {
-        id: 'tunya-multi-select-selection',
+        id: '1esthetic-multi-select-selection',
         title: range ? 'Select range' : total ? "Selected: ".concat(total) : 'Select messages',
         content: range ? 'Tap the last message in the range.' : total ? 'Tap more messages, then press Delete.' : 'Tap messages to select them.',
         duration: 0,
@@ -877,7 +877,7 @@ function assetId(name) {
         var rows = (_findElement = findElement(result, isActionSheetRowGroup)) === null || _findElement === void 0 ? void 0 : (_findElement_props = _findElement.props) === null || _findElement_props === void 0 ? void 0 : _findElement_props.children;
         if (!Array.isArray(rows)) return result;
         if (rows.some(function(row) {
-            return (row === null || row === void 0 ? void 0 : row.key) === 'tunya-multi-select-toggle';
+            return (row === null || row === void 0 ? void 0 : row.key) === '1esthetic-multi-select-toggle';
         })) return result;
         var rowIcon = function rowIcon() {
             for(var _len = arguments.length, names = new Array(_len), _key = 0; _key < _len; _key++){
@@ -914,7 +914,7 @@ function assetId(name) {
         var total = count();
         var additions = [
             /*#__PURE__*/ react.createElement(Row, {
-                key: 'tunya-multi-select-toggle',
+                key: '1esthetic-multi-select-toggle',
                 label: selected ? 'Deselect message' : 'Select message',
                 icon: selected ? rowIcon('CheckmarkLargeIcon') : rowIcon('PlusLargeIcon', 'PlusMediumIcon', 'CirclePlusIcon', 'AddIcon'),
                 onPress: function onPress() {
@@ -930,7 +930,7 @@ function assetId(name) {
             })
         ];
         additions.push(/*#__PURE__*/ react.createElement(Row, {
-            key: 'tunya-multi-select-range',
+            key: '1esthetic-multi-select-range',
             label: 'Select range from here',
             icon: rowIcon('ArrowLargeDownIcon', 'ArrowDownIcon', 'ChevronLargeRightIcon'),
             onPress: function onPress() {
@@ -944,7 +944,7 @@ function assetId(name) {
             if (total > 0) {
                 var _rowIcon1;
                 additions.push(/*#__PURE__*/ react.createElement(Row, {
-                    key: 'tunya-multi-select-delete',
+                    key: '1esthetic-multi-select-delete',
                     label: "Delete selected (".concat(total, ")"),
                     icon: (_rowIcon1 = rowIcon('TrashIcon')) !== null && _rowIcon1 !== void 0 ? _rowIcon1 : rowIcon('DeleteIcon'),
                     variant: 'danger',
@@ -955,7 +955,7 @@ function assetId(name) {
                 }));
             }
             additions.push(/*#__PURE__*/ react.createElement(Row, {
-                key: 'tunya-multi-select-done',
+                key: '1esthetic-multi-select-done',
                 label: 'Done selecting',
                 icon: (_rowIcon = rowIcon('CircleXIcon')) !== null && _rowIcon !== void 0 ? _rowIcon : rowIcon('XIcon'),
                 onPress: function onPress() {
@@ -967,7 +967,7 @@ function assetId(name) {
         for(var index = rows.length - 1; index >= 0; index -= 1){
             var _rows_index;
             var key = (_rows_index = rows[index]) === null || _rows_index === void 0 ? void 0 : _rows_index.key;
-            if (typeof key === 'string' && key.startsWith('tunya-multi-select-')) {
+            if (typeof key === 'string' && key.startsWith('1esthetic-multi-select-')) {
                 rows.splice(index, 1);
             }
         }

@@ -60,7 +60,7 @@ export function startMessageSheet(): Unpatch {
 		const rows = findElement(result, isActionSheetRowGroup)?.props?.children;
 
 		if (!Array.isArray(rows)) return result;
-		if (rows.some((row: any) => row?.key === 'tunya-multi-select-toggle')) return result;
+		if (rows.some((row: any) => row?.key === '1esthetic-multi-select-toggle')) return result;
 
 		const rowIcon = (...names: string[]) => {
 			if (!Row.Icon) return undefined;
@@ -79,7 +79,7 @@ export function startMessageSheet(): Unpatch {
 		const total = count();
 		const additions: unknown[] = [
 			createElement(Row, {
-				key: 'tunya-multi-select-toggle',
+				key: '1esthetic-multi-select-toggle',
 				label: selected ? 'Deselect message' : 'Select message',
 				icon: selected
 					? rowIcon('CheckmarkLargeIcon')
@@ -105,7 +105,7 @@ export function startMessageSheet(): Unpatch {
 
 		additions.push(
 			createElement(Row, {
-				key: 'tunya-multi-select-range',
+				key: '1esthetic-multi-select-range',
 				label: 'Select range from here',
 				icon: rowIcon('ArrowLargeDownIcon', 'ArrowDownIcon', 'ChevronLargeRightIcon'),
 				onPress: () => {
@@ -120,7 +120,7 @@ export function startMessageSheet(): Unpatch {
 			if (total > 0) {
 				additions.push(
 					createElement(Row, {
-						key: 'tunya-multi-select-delete',
+						key: '1esthetic-multi-select-delete',
 						label: `Delete selected (${total})`,
 						icon: rowIcon('TrashIcon') ?? rowIcon('DeleteIcon'),
 						variant: 'danger',
@@ -134,7 +134,7 @@ export function startMessageSheet(): Unpatch {
 
 			additions.push(
 				createElement(Row, {
-					key: 'tunya-multi-select-done',
+					key: '1esthetic-multi-select-done',
 					label: 'Done selecting',
 					icon: rowIcon('CircleXIcon') ?? rowIcon('XIcon'),
 					onPress: () => {
@@ -148,7 +148,7 @@ export function startMessageSheet(): Unpatch {
 		for (let index = rows.length - 1; index >= 0; index -= 1) {
 			const key = rows[index]?.key;
 
-			if (typeof key === 'string' && key.startsWith('tunya-multi-select-')) {
+			if (typeof key === 'string' && key.startsWith('1esthetic-multi-select-')) {
 				rows.splice(index, 1);
 			}
 		}

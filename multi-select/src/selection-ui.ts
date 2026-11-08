@@ -68,7 +68,7 @@ export function refreshSelectionToast(): void {
 	});
 
 	const options = {
-		id: 'tunya-multi-select-selection',
+		id: '1esthetic-multi-select-selection',
 		title: range ? 'Select range' : total ? `Selected: ${total}` : 'Select messages',
 		content: range
 			? 'Tap the last message in the range.'

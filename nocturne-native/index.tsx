@@ -42,7 +42,7 @@ function underSwipe(objc: Objc, view: unknown): boolean {
 function nocturneApplied(): boolean {
 	const themes = (globalThis as any).unbound?.themes;
 
-	return !themes || themes.isEnabled('tunya.nocturne');
+	return !themes || themes.isEnabled('1esthetic.nocturne');
 }
 
 /**

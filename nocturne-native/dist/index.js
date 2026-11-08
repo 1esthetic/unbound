@@ -77,7 +77,7 @@ function underSwipe(objc, view) {
 /** Only paint while Nocturne is the applied theme, so another theme or light mode stays Discord's. */ function nocturneApplied() {
     var _globalThis_unbound;
     var themes = (_globalThis_unbound = globalThis.unbound) === null || _globalThis_unbound === void 0 ? void 0 : _globalThis_unbound.themes;
-    return !themes || themes.isEnabled('tunya.nocturne');
+    return !themes || themes.isEnabled('1esthetic.nocturne');
 }
 /**
  * @description Swaps Discord's blurple swipe background for the theme colours. Discord draws the
