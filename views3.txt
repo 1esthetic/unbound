@@ -1,0 +1,41 @@
+--- result ---
+UIWindow 402x874 hidden
+  UITransitionView 402x874
+    UIDropShadowView 402x874
+      RCTSurfaceHostingProxyRootView 402x874
+        react_native_keyboard_controller.KeyboardTrackingView 402x0 hidden
+        RCTSurfaceView 402x874
+        react_native_keyboard_controller.KeyboardTrackingView 402x0 hidden
+          RCTRootComponentView 402x874
+            RCTViewComponentView 2x2 hidden
+            KeyboardControllerView 402x874
+            RCTViewComponentView 0x0 hidden
+              RNCSafeAreaProviderComponentView 402x874
+                RCTViewComponentView 402x874
+                  RCTViewComponentView 402x874
+                  RCTViewComponentView 402x874 hidden
+                    RCTViewComponentView 402x874
+                      RCTViewComponentView 402x874
+                        RNSScreenStackView 402x874
+
+UITextEffectsWindow 402x874 hidden
+  UITrackingWindowView 402x874
+    UIKeyboardItemContainerView 402x0
+    UIEditingOverlayGestureView 402x874
+      UIKeyboardDockView 402x0 hidden
+        UIKeyboardDockItemButton 68x69
+        UIKeyboardDockItemButton 68x69
+          UIImageView 32x32
+          UIButtonLabel 0x0 hidden
+          UIImageView 27x33
+          UIButtonLabel 0x0 hidden
+
+DevOverlayPassthroughWindow 60x60 hidden
+  UITransitionView 60x60
+    UIDropShadowView 60x60
+      UIView 60x60
+        UIView 44x44
+        UIButton 44x44
+          UIVisualEffectView 88x88
+          UIImageView 26x27
+            _UIVisualEffectBackdropView 88x88

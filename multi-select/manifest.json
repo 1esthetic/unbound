@@ -1,0 +1,27 @@
+{
+	"id": "tunya.multi-select",
+	"name": "Multi Select",
+	"description": "Select multiple messages by tapping them and delete them.",
+	"authors": [
+		{
+			"name": "tunya",
+			"id": "0"
+		}
+	],
+	"version": "1.0.0",
+	"minNativePluginApi": "1.0.0",
+	"main": "index.tsx",
+	"platforms": {
+		"ios": {
+			"capabilities": [
+				"native.objc.classes",
+				"native.objc.invoke",
+				"native.objc.invokeAsync",
+				"native.objc.batch",
+				"native.objc.snapshot",
+				"native.objc.ivars",
+				"native.objc.hooks"
+			]
+		}
+	}
+}

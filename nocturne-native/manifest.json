@@ -1,0 +1,23 @@
+{
+	"id": "tunya.nocturne-native",
+	"name": "Nocturne Native",
+	"description": "Recolours Discord's native swipe-to-reply indicator to match the Nocturne theme.",
+	"authors": [
+		{
+			"name": "tunya",
+			"id": "0"
+		}
+	],
+	"version": "1.0.0",
+	"minNativePluginApi": "1.0.0",
+	"main": "index.tsx",
+	"platforms": {
+		"ios": {
+			"capabilities": [
+				"native.objc.classes",
+				"native.objc.invoke",
+				"native.objc.hooks"
+			]
+		}
+	}
+}

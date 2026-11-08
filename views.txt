@@ -1,0 +1,2 @@
+--- result ---
+No running plugin can read native views. Enable a plugin with native view access, such as Shiki Codeblocks, then retry.

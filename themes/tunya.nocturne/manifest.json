@@ -1,0 +1,14 @@
+{
+	"id": "tunya.nocturne",
+	"name": "Nocturne",
+	"description": "Тёмная тема без синего оттенка, чуть темнее стандартной.",
+	"authors": [
+		{
+			"name": "tunya",
+			"id": "0"
+		}
+	],
+	"version": "1.0.0",
+	"icon": "PaintPaletteIcon",
+	"main": "bundle.json"
+}
