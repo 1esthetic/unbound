@@ -1,0 +1,13 @@
+{
+	"id": "tunya.swipe-to-reply",
+	"name": "Swipe Reply",
+	"description": "Makes swiping any message reply to it, including your own.",
+	"authors": [
+		{
+			"name": "1esthetic",
+			"id": "352511236342284299"
+		}
+	],
+	"version": "1.0.0",
+	"main": "index.js"
+}

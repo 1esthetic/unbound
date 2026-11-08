@@ -1,7 +1,7 @@
 {
-	"name": "swipe-to-reply",
+	"name": "nocturne-native",
 	"version": "1.0.0",
-	"description": "Makes swiping any message reply to it, including your own.",
+	"description": "Recolours Discord's native swipe-to-reply indicator to match the Nocturne theme.",
 	"private": true,
 	"type": "module",
 	"scripts": {

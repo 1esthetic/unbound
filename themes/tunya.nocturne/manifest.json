@@ -1,11 +1,11 @@
 {
 	"id": "tunya.nocturne",
 	"name": "Nocturne",
-	"description": "Тёмная тема без синего оттенка, чуть темнее стандартной.",
+	"description": "A neutral dark theme with no blue tint, a little darker than Discord's Darker.",
 	"authors": [
 		{
-			"name": "tunya",
-			"id": "0"
+			"name": "1esthetic",
+			"id": "352511236342284299"
 		}
 	],
 	"version": "1.0.0",
