@@ -97,6 +97,11 @@ export function isRangePending(): boolean {
 	return rangeStart !== null;
 }
 
+/** Whether this message is the start of a range that is waiting for its other end. */
+export function isRangeStart(messageId: string): boolean {
+	return rangeStart?.id === messageId;
+}
+
 /** Clears the selection and waits for the user to tap the last message of a range. */
 export function startRange(message: SelectedMessage): void {
 	selected.clear();

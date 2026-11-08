@@ -34,6 +34,16 @@ export function showSelectionWarning(title: string, content: string): void {
 }
 
 /**
+ * @description Leaves selection mode when the toast's own close button is used, the same way the
+ * Done button does. Clearing first also stops the toast closing itself from calling this again.
+ */
+function handleDismiss(): void {
+	if (!isSelecting() && count() === 0 && !isRangePending()) return;
+
+	exitSelection();
+}
+
+/**
  * @description Shows or updates the persistent toast that tracks selection mode. In the mode it
  * explains that taps select messages; once anything is selected it also offers Delete and Done.
  */
@@ -77,6 +87,8 @@ export function refreshSelectionToast(): void {
 				: 'Tap messages to select them.',
 		duration: 0,
 		buttons,
+		// The core does not type this yet; it arrives with the toast's close button.
+		onDismiss: handleDismiss,
 	};
 
 	if (selectionToast) {

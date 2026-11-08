@@ -39,14 +39,21 @@ export function startMessageSheet(): Unpatch {
 
 	const unpatches: Unpatch[] = [];
 	const patchedModules = new WeakSet<object>();
+	const patchedDirect = new WeakSet<object>();
 
 	const hide = () => {
-		if (!sheetKey) return;
-
 		try {
-			ActionSheets.hideActionSheet(sheetKey);
+			if (sheetKey) ActionSheets.hideActionSheet(sheetKey);
 		} catch (error) {
 			logger.warn('Could not close the action sheet:', error);
+		}
+
+		// Some builds render the sheet directly, without a key to hide it by. Closing every sheet
+		// is safe here: the only sheet open is the message sheet the row belongs to.
+		try {
+			(ActionSheets as any).hideAllActionSheets?.();
+		} catch {
+			// Older builds only carry hideActionSheet.
 		}
 	};
 
@@ -194,35 +201,43 @@ export function startMessageSheet(): Unpatch {
 		}),
 	);
 
-	// Some builds render the sheet directly instead of opening it through openLazy.
-	void Promise.resolve(
-		metro.findLazy(
-			metro.filters.byFilePath(
-				'modules/messages/native/long_press/LongPressMessageActionSheet.tsx',
-			),
-		),
-	)
-		.then((module: unknown) => {
-			if (disposed || !module || typeof module !== 'object') return;
+	function patchDirectSheet(module: unknown): void {
+		if (disposed || !module || typeof module !== 'object' || patchedDirect.has(module)) return;
 
-			const target = findRenderTarget(module as Record<string, any>);
+		patchedDirect.add(module);
 
-			if (!target) return;
+		const target = findRenderTarget(module as Record<string, any>);
 
-			unpatches.push(
-				patcher.after(target.holder, target.key, (context: any) => {
-					const message = messageFromSheet(context.args?.[0]);
+		if (!target) return;
 
-					if (!message) return context.result;
+		unpatches.push(
+			patcher.after(target.holder, target.key, (context: any) => {
+				const message = messageFromSheet(context.args?.[0]);
 
-					current = message;
-					sheetKey = null;
+				if (!message) return context.result;
 
-					return render(context.result);
-				}),
-			);
-		})
-		.catch(() => undefined);
+				current = message;
+				sheetKey = null;
+
+				return render(context.result);
+			}),
+		);
+	}
+
+	// Some builds render the sheet directly instead of opening it through openLazy. `findLazy`
+	// returns a handle in this client, so resolve it the same way as the plugin's other lookups:
+	// use the module if it is already loaded, otherwise patch it when Discord loads it.
+	const directFilter = metro.filters.byFilePath(
+		'modules/messages/native/long_press/LongPressMessageActionSheet.tsx',
+	);
+	const directHandle = metro.findLazy(directFilter);
+	const direct = metro.getLoadedModule(directHandle);
+
+	if (direct) patchDirectSheet(direct);
+
+	const removeDirect = metro.onModuleLoaded(directFilter, patchDirectSheet);
+
+	if (typeof removeDirect === 'function') unpatches.push(removeDirect);
 
 	return () => {
 		disposed = true;

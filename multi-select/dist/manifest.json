@@ -1,7 +1,7 @@
 {
 	"id": "1esthetic.multi-select",
 	"name": "Multi Select",
-	"description": "Select multiple messages by tapping them and delete them.",
+	"description": "Select multiple messages by tapping them and delete them. iPhone and iPad only.",
 	"authors": [
 		{
 			"name": "1esthetic",

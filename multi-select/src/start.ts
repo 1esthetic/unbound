@@ -9,7 +9,7 @@ import { exitSelection, refreshSelectionToast, setDeleteSelectedAction } from '.
 let stopMessageSheet: (() => void) | undefined;
 let stopMessageTaps: (() => void) | undefined;
 let stopNativeHighlight: (() => void) | undefined;
-let stopChannelWatch: (() => void) | undefined;
+let stopChannelWatch: (() => void)[] = [];
 
 function onChannelSelect() {
 	exitSelection();
@@ -30,11 +30,28 @@ export function startMultiSelect(context?: PluginContext): void {
 
 	try {
 		const flux = (globalThis as any).unbound?.flux;
-		const remove = flux?.onAction?.('CHANNEL_SELECT', onChannelSelect);
+		const cleanups: (() => void)[] = [];
 
-		if (typeof remove === 'function') {
-			stopChannelWatch = remove;
+		try {
+			const offAction = flux?.onAction?.('CHANNEL_SELECT', onChannelSelect);
+
+			if (typeof offAction === 'function') cleanups.push(offAction);
+		} catch {
+			// Older builds only carry one of the two ways to watch the channel.
 		}
+
+		// Leaving a chat does not always dispatch CHANNEL_SELECT; the selected channel store does
+		// change, so watch that as well. It takes the store object, not its name.
+		try {
+			const store = flux?.getStore?.('SelectedChannel');
+			const offStore = store ? flux?.onStoreChange?.(store, onChannelSelect) : undefined;
+
+			if (typeof offStore === 'function') cleanups.push(offStore);
+		} catch {
+			// The action above still covers builds without a usable store watcher.
+		}
+
+		stopChannelWatch = cleanups;
 	} catch (error) {
 		logger.warn('Could not watch channel changes:', error);
 	}
@@ -52,12 +69,12 @@ export function stopMultiSelect(): void {
 	stopNativeHighlight = undefined;
 
 	try {
-		stopChannelWatch?.();
+		for (const cleanup of stopChannelWatch) cleanup();
 	} catch {
 		// The dispatcher may be gone while Discord shuts down.
 	}
 
-	stopChannelWatch = undefined;
+	stopChannelWatch = [];
 	setDeleteSelectedAction(undefined);
 	exitSelection();
 }

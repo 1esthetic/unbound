@@ -6,13 +6,7 @@ import type {
 
 import { SelectedChannelStore } from './modules';
 import { handleMessageTap } from './range';
-import {
-	count,
-	isSelected,
-	isSelecting,
-	messageFromEvent,
-	subscribe,
-} from './selection';
+import { isRangeStart, isSelected, isSelecting, messageFromEvent, subscribe } from './selection';
 import { refreshSelectionToast, showSelectionWarning } from './selection-ui';
 
 type Objc = NativeObjCBridge;
@@ -21,6 +15,7 @@ type Cell = NativeObjectHandle;
 type CellState = {
 	messageId?: string;
 	applied?: boolean;
+	readAt?: number;
 };
 
 const MESSAGE_CELL = 'DCDMessageTableViewCell';
@@ -222,7 +217,11 @@ export function startNativeHighlight(context: PluginContext | undefined): (() =>
 		return key;
 	}
 
-	async function paint(cell: Cell): Promise<void> {
+	async function setBackground(cell: Cell, color: NativeObjectHandle): Promise<void> {
+		await objc.invokeAsync(cell, 'setBackgroundColor:', [color]);
+	}
+
+	async function paint(cell: Cell, force = false): Promise<void> {
 		if (disposed || !highlight || !clear) return;
 
 		const key = remember(cell);
@@ -231,7 +230,11 @@ export function startNativeHighlight(context: PluginContext | undefined): (() =>
 
 		let cached = state.get(key);
 
-		if (!cached) {
+		// Discord reuses cells, so a remembered message id goes stale: the row itself stays the same
+		// object while its message changes. Re-read it on reuse, and now and then in between.
+		const stale = !cached || force || Date.now() - (cached.readAt ?? 0) > 500;
+
+		if (stale) {
 			const messageId = await readMessageId(cell, objc);
 
 			// A cell can be mid-reuse; don't remember a failed read forever.
@@ -241,17 +244,27 @@ export function startNativeHighlight(context: PluginContext | undefined): (() =>
 				return;
 			}
 
-			cached = { messageId };
+			const changed = cached !== undefined && cached.messageId !== messageId;
+
+			if (changed && cached?.applied) {
+				await setBackground(cell, clear);
+			}
+
+			cached = {
+				messageId,
+				applied: changed ? false : cached?.applied,
+				readAt: Date.now(),
+			};
 			state.set(key, cached);
 		}
 
-		const selected = isSelected(cached.messageId);
+		const selected = isSelected(cached.messageId) || isRangeStart(cached.messageId);
 
 		if (selected) {
-			await objc.invokeAsync(cell, 'setBackgroundColor:', [highlight]);
+			await setBackground(cell, highlight);
 			cached.applied = true;
 		} else if (cached.applied) {
-			await objc.invokeAsync(cell, 'setBackgroundColor:', [clear]);
+			await setBackground(cell, clear);
 			cached.applied = false;
 		}
 	}
@@ -260,16 +273,6 @@ export function startNativeHighlight(context: PluginContext | undefined): (() =>
 	 * @description Repaints the rows already known to the plugin. The first call in a session walks
 	 * the native tree once to seed that list; every later selection change is a short loop.
 	 */
-	function hasSelectedCell(): boolean {
-		for (const [key] of cells) {
-			const cached = state.get(key);
-
-			if (cached?.messageId && isSelected(cached.messageId)) return true;
-		}
-
-		return false;
-	}
-
 	async function seed(): Promise<void> {
 		const now = Date.now();
 
@@ -290,22 +293,20 @@ export function startNativeHighlight(context: PluginContext | undefined): (() =>
 	async function refresh(): Promise<void> {
 		if (disposed) return;
 
-		// Rescan when no cell is known at all, or when the rows for the current selection
-		// haven't been seen yet (for example after the chat was opened later or scrolled).
-		if (!cells.size || (count() > 0 && !hasSelectedCell())) await seed();
+		// Cells are remembered as they appear, so a full native scan is only needed when nothing is
+		// known yet. Scanning on every selection change is what made fast taps feel half applied.
+		if (!cells.size) await seed();
 
-		for (const cell of cells.values()) {
-			await paint(cell).catch(() => undefined);
-		}
+		await Promise.all(
+			Array.from(cells.values()).map((cell) => paint(cell).catch(() => undefined)),
+		);
 	}
 
 	function reset(cell: Cell): void {
 		forget(cell);
 
 		if (clear) {
-			void objc
-				.invokeAsync(cell, 'setBackgroundColor:', [clear])
-				.catch(() => undefined);
+			void setBackground(cell, clear).catch(() => undefined);
 		}
 	}
 
@@ -343,109 +344,82 @@ export function startNativeHighlight(context: PluginContext | undefined): (() =>
 			}
 		}
 
+		// Update the counter first, then paint in the background: awaiting native calls before the
+		// toast made every tap feel delayed.
 		refreshSelectionToast();
+
+		void paint(cell, true).catch(() => undefined);
 	}
 
-	try {
-		const options = {
-			coalesce: 'receiver' as const,
-			payload: { receiver: true as const, arguments: [] },
-		};
+	const options = {
+		coalesce: 'receiver' as const,
+		payload: { receiver: true as const, arguments: [] },
+	};
 
-		hooks.push(
-			objc.hook(
-				MESSAGE_CELL,
-				'didMoveToWindow',
-				{
-					after: ({ self }: { self?: Cell }) => {
-						if (self) {
-							remember(self);
-							void paint(self).catch(() => undefined);
-						}
-					},
-				},
-				options,
-			),
-			objc.hook(
-				MESSAGE_CELL,
-				'layoutSubviews',
-				{
-					after: ({ self }: { self?: Cell }) => {
-						if (self) void paint(self).catch(() => undefined);
-					},
-				},
-				options,
-			),
-			objc.hook(MESSAGE_CELL, 'prepareForReuse', {
-				after: ({ self }: { self?: Cell }) => {
-					if (self) reset(self);
-				},
-			}),
-			objc.hook(
-				MESSAGE_CELL,
-				'touchesBegan:withEvent:',
-				{
-					after: ({ self }: { self?: Cell }) => {
-						if (!self || !isSelecting()) return;
-
-						touchStartedAt = Date.now();
-						touchCellKey = cellKey(self, objc);
-						touchMoved = false;
-					},
-				},
-				options,
-			),
-			objc.hook(
-				MESSAGE_CELL,
-				'touchesMoved:withEvent:',
-				{
-					after: () => {
-						if (isSelecting()) touchMoved = true;
-					},
-				},
-				options,
-			),
-			objc.hook(
-				MESSAGE_CELL,
-				'touchesCancelled:withEvent:',
-				{
-					after: () => {
-						touchMoved = true;
-					},
-				},
-				options,
-			),
-			objc.hook(
-				MESSAGE_CELL,
-				'touchesEnded:withEvent:',
-				{
-					after: ({ self }: { self?: Cell }) => {
-						if (!self || !isSelecting() || touchMoved) return;
-
-						if (Date.now() - touchStartedAt > 350) return;
-						if (cellKey(self, objc) !== touchCellKey) return;
-
-						touchCellKey = undefined;
-
-						void handleNativeTap(self).catch(() => undefined);
-					},
-				},
-				options,
-			),
-		);
-	} catch (error) {
-		logger.warn('Could not hook iOS message cells:', error);
-
-		for (const hook of hooks.splice(0)) {
-			try {
-				hook.remove();
-			} catch {
-				// The scope may have removed it already.
-			}
+	const hook = (selector: string, handlers: any) => {
+		try {
+			hooks.push(objc.hook(MESSAGE_CELL, selector, handlers, options));
+		} catch (error) {
+			// One unsupported selector must not take the rest of the hooks down with it.
+			logger.warn(`Could not hook ${selector}:`, error);
 		}
+	};
 
-		return;
-	}
+	hook('didMoveToWindow', {
+		after: ({ self }: { self?: Cell }) => {
+			if (self) {
+				remember(self);
+				void paint(self, true).catch(() => undefined);
+			}
+		},
+	});
+
+	hook('layoutSubviews', {
+		after: ({ self }: { self?: Cell }) => {
+			if (self) void paint(self).catch(() => undefined);
+		},
+	});
+
+	hook('prepareForReuse', {
+		after: ({ self }: { self?: Cell }) => {
+			if (self) reset(self);
+		},
+	});
+
+	hook('touchesBegan:withEvent:', {
+		after: ({ self }: { self?: Cell }) => {
+			if (!self || !isSelecting()) return;
+
+			touchStartedAt = Date.now();
+			touchCellKey = cellKey(self, objc);
+			touchMoved = false;
+		},
+	});
+
+	hook('touchesMoved:withEvent:', {
+		after: () => {
+			if (isSelecting()) touchMoved = true;
+		},
+	});
+
+	hook('touchesCancelled:withEvent:', {
+		after: () => {
+			touchMoved = true;
+		},
+	});
+
+	hook('touchesEnded:withEvent:', {
+		after: ({ self }: { self?: Cell }) => {
+			if (!self || !isSelecting() || touchMoved) return;
+
+			if (Date.now() - touchStartedAt > 350) return;
+			if (cellKey(self, objc) !== touchCellKey) return;
+
+			touchCellKey = undefined;
+
+			void handleNativeTap(self).catch(() => undefined);
+		},
+	});
 
 	const unsubscribe = subscribe(() => {
 		void refresh();
@@ -474,9 +448,7 @@ export function startNativeHighlight(context: PluginContext | undefined): (() =>
 		void (async () => {
 			for (const cell of cells.values()) {
 				if (clear) {
-					await objc
-						.invokeAsync(cell, 'setBackgroundColor:', [clear])
-						.catch(() => undefined);
+					await setBackground(cell, clear).catch(() => undefined);
 				}
 			}
 

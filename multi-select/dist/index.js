@@ -147,6 +147,9 @@ function toggle(message) {
 function isRangePending() {
     return rangeStart !== null;
 }
+/** Whether this message is the start of a range that is waiting for its other end. */ function isRangeStart(messageId) {
+    return (rangeStart === null || rangeStart === void 0 ? void 0 : rangeStart.id) === messageId;
+}
 /** Clears the selection and waits for the user to tap the last message of a range. */ function startRange(message) {
     selected.clear();
     rangeStart = message;
@@ -252,6 +255,13 @@ var deleteSelected;
     });
 }
 /**
+ * @description Leaves selection mode when the toast's own close button is used, the same way the
+ * Done button does. Clearing first also stops the toast closing itself from calling this again.
+ */ function handleDismiss() {
+    if (!isSelecting() && count() === 0 && !isRangePending()) return;
+    exitSelection();
+}
+/**
  * @description Shows or updates the persistent toast that tracks selection mode. In the mode it
  * explains that taps select messages; once anything is selected it also offers Delete and Done.
  */ function refreshSelectionToast() {
@@ -283,7 +293,9 @@ var deleteSelected;
         title: range ? 'Select range' : total ? "Selected: ".concat(total) : 'Select messages',
         content: range ? 'Tap the last message in the range.' : total ? 'Tap more messages, then press Delete.' : 'Tap messages to select them.',
         duration: 0,
-        buttons: buttons
+        buttons: buttons,
+        // The core does not type this yet; it arrives with the toast's close button.
+        onDismiss: handleDismiss
     };
     if (selectionToast) {
         selectionToast.update(options);
@@ -860,12 +872,20 @@ function assetId(name) {
     var disposed = false;
     var unpatches = [];
     var patchedModules = new WeakSet();
+    var patchedDirect = new WeakSet();
     var hide = function hide() {
-        if (!sheetKey) return;
         try {
-            ActionSheets.hideActionSheet(sheetKey);
+            if (sheetKey) ActionSheets.hideActionSheet(sheetKey);
         } catch (error) {
             logger.warn('Could not close the action sheet:', error);
+        }
+        // Some builds render the sheet directly, without a key to hide it by. Closing every sheet
+        // is safe here: the only sheet open is the message sheet the row belongs to.
+        try {
+            var _ActionSheets_hideAllActionSheets;
+            (_ActionSheets_hideAllActionSheets = ActionSheets.hideAllActionSheets) === null || _ActionSheets_hideAllActionSheets === void 0 ? void 0 : _ActionSheets_hideAllActionSheets.call(ActionSheets);
+        } catch (unused) {
+        // Older builds only carry hideActionSheet.
         }
     };
     var render = function render(result) {
@@ -1004,9 +1024,9 @@ function assetId(name) {
             });
         }
     }));
-    // Some builds render the sheet directly instead of opening it through openLazy.
-    void Promise.resolve(api.metro.findLazy(api.metro.filters.byFilePath('modules/messages/native/long_press/LongPressMessageActionSheet.tsx'))).then(function(module) {
-        if (disposed || !module || (typeof module === "undefined" ? "undefined" : _type_of$1(module)) !== 'object') return;
+    function patchDirectSheet(module) {
+        if (disposed || !module || (typeof module === "undefined" ? "undefined" : _type_of$1(module)) !== 'object' || patchedDirect.has(module)) return;
+        patchedDirect.add(module);
         var target = findRenderTarget(module);
         if (!target) return;
         unpatches.push(api.patcher.after(target.holder, target.key, function(context) {
@@ -1017,9 +1037,16 @@ function assetId(name) {
             sheetKey = null;
             return render(context.result);
         }));
-    }).catch(function() {
-        return undefined;
-    });
+    }
+    // Some builds render the sheet directly instead of opening it through openLazy. `findLazy`
+    // returns a handle in this client, so resolve it the same way as the plugin's other lookups:
+    // use the module if it is already loaded, otherwise patch it when Discord loads it.
+    var directFilter = api.metro.filters.byFilePath('modules/messages/native/long_press/LongPressMessageActionSheet.tsx');
+    var directHandle = api.metro.findLazy(directFilter);
+    var direct = api.metro.getLoadedModule(directHandle);
+    if (direct) patchDirectSheet(direct);
+    var removeDirect = api.metro.onModuleLoaded(directFilter, patchDirectSheet);
+    if (typeof removeDirect === 'function') unpatches.push(removeDirect);
     return function() {
         disposed = true;
         current = null;
@@ -1686,9 +1713,30 @@ function findVisibleCells(objc) {
         }
         return key;
     }
-    function paint(cell) {
+    function setBackground(cell, color) {
         return _async_to_generator(function() {
-            var key, cached, messageId, selected;
+            return _ts_generator(this, function(_state) {
+                switch(_state.label){
+                    case 0:
+                        return [
+                            4,
+                            objc.invokeAsync(cell, 'setBackgroundColor:', [
+                                color
+                            ])
+                        ];
+                    case 1:
+                        _state.sent();
+                        return [
+                            2
+                        ];
+                }
+            });
+        })();
+    }
+    function paint(cell) {
+        var force = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : false;
+        return _async_to_generator(function() {
+            var _cached_readAt, key, cached, stale, messageId, changed, selected;
             return _ts_generator(this, function(_state) {
                 switch(_state.label){
                     case 0:
@@ -1700,9 +1748,12 @@ function findVisibleCells(objc) {
                             2
                         ];
                         cached = state.get(key);
-                        if (!!cached) return [
+                        // Discord reuses cells, so a remembered message id goes stale: the row itself stays the same
+                        // object while its message changes. Re-read it on reuse, and now and then in between.
+                        stale = !cached || force || Date.now() - ((_cached_readAt = cached.readAt) !== null && _cached_readAt !== void 0 ? _cached_readAt : 0) > 500;
+                        if (!stale) return [
                             3,
-                            2
+                            4
                         ];
                         return [
                             4,
@@ -1717,46 +1768,57 @@ function findVisibleCells(objc) {
                                 2
                             ];
                         }
-                        cached = {
-                            messageId: messageId
-                        };
-                        state.set(key, cached);
-                        _state.label = 2;
-                    case 2:
-                        selected = isSelected(cached.messageId);
-                        if (!selected) return [
+                        changed = cached !== undefined && cached.messageId !== messageId;
+                        if (!(changed && (cached === null || cached === void 0 ? void 0 : cached.applied))) return [
                             3,
-                            4
+                            3
                         ];
                         return [
                             4,
-                            objc.invokeAsync(cell, 'setBackgroundColor:', [
-                                highlight
-                            ])
+                            setBackground(cell, clear)
                         ];
+                    case 2:
+                        _state.sent();
+                        _state.label = 3;
                     case 3:
+                        cached = {
+                            messageId: messageId,
+                            applied: changed ? false : cached === null || cached === void 0 ? void 0 : cached.applied,
+                            readAt: Date.now()
+                        };
+                        state.set(key, cached);
+                        _state.label = 4;
+                    case 4:
+                        selected = isSelected(cached.messageId) || isRangeStart(cached.messageId);
+                        if (!selected) return [
+                            3,
+                            6
+                        ];
+                        return [
+                            4,
+                            setBackground(cell, highlight)
+                        ];
+                    case 5:
                         _state.sent();
                         cached.applied = true;
                         return [
                             3,
-                            6
+                            8
                         ];
-                    case 4:
+                    case 6:
                         if (!cached.applied) return [
                             3,
-                            6
+                            8
                         ];
                         return [
                             4,
-                            objc.invokeAsync(cell, 'setBackgroundColor:', [
-                                clear
-                            ])
+                            setBackground(cell, clear)
                         ];
-                    case 5:
+                    case 7:
                         _state.sent();
                         cached.applied = false;
-                        _state.label = 6;
-                    case 6:
+                        _state.label = 8;
+                    case 8:
                         return [
                             2
                         ];
@@ -1767,31 +1829,7 @@ function findVisibleCells(objc) {
     /**
 	 * @description Repaints the rows already known to the plugin. The first call in a session walks
 	 * the native tree once to seed that list; every later selection change is a short loop.
-	 */ function hasSelectedCell() {
-        var _iteratorNormalCompletion = true, _didIteratorError = false, _iteratorError = undefined;
-        try {
-            for(var _iterator = cells[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true){
-                var _step_value = _sliced_to_array(_step.value, 1), key = _step_value[0];
-                var cached = state.get(key);
-                if ((cached === null || cached === void 0 ? void 0 : cached.messageId) && isSelected(cached.messageId)) return true;
-            }
-        } catch (err) {
-            _didIteratorError = true;
-            _iteratorError = err;
-        } finally{
-            try {
-                if (!_iteratorNormalCompletion && _iterator.return != null) {
-                    _iterator.return();
-                }
-            } finally{
-                if (_didIteratorError) {
-                    throw _iteratorError;
-                }
-            }
-        }
-        return false;
-    }
-    function seed() {
+	 */ function seed() {
         return _async_to_generator(function() {
             var now, found, _iteratorNormalCompletion, _didIteratorError, _iteratorError, _iterator, _step, cell;
             return _ts_generator(this, function(_state) {
@@ -1857,14 +1895,13 @@ function findVisibleCells(objc) {
     }
     function refresh() {
         return _async_to_generator(function() {
-            var _iteratorNormalCompletion, _didIteratorError, _iteratorError, _iterator, _step, cell, err;
             return _ts_generator(this, function(_state) {
                 switch(_state.label){
                     case 0:
                         if (disposed) return [
                             2
                         ];
-                        if (!(!cells.size || count() > 0 && !hasSelectedCell())) return [
+                        if (!!cells.size) return [
                             3,
                             2
                         ];
@@ -1876,65 +1913,16 @@ function findVisibleCells(objc) {
                         _state.sent();
                         _state.label = 2;
                     case 2:
-                        _iteratorNormalCompletion = true, _didIteratorError = false, _iteratorError = undefined;
-                        _state.label = 3;
-                    case 3:
-                        _state.trys.push([
-                            3,
-                            8,
-                            9,
-                            10
-                        ]);
-                        _iterator = cells.values()[Symbol.iterator]();
-                        _state.label = 4;
-                    case 4:
-                        if (!!(_iteratorNormalCompletion = (_step = _iterator.next()).done)) return [
-                            3,
-                            7
-                        ];
-                        cell = _step.value;
                         return [
                             4,
-                            paint(cell).catch(function() {
-                                return undefined;
-                            })
+                            Promise.all(Array.from(cells.values()).map(function(cell) {
+                                return paint(cell).catch(function() {
+                                    return undefined;
+                                });
+                            }))
                         ];
-                    case 5:
+                    case 3:
                         _state.sent();
-                        _state.label = 6;
-                    case 6:
-                        _iteratorNormalCompletion = true;
-                        return [
-                            3,
-                            4
-                        ];
-                    case 7:
-                        return [
-                            3,
-                            10
-                        ];
-                    case 8:
-                        err = _state.sent();
-                        _didIteratorError = true;
-                        _iteratorError = err;
-                        return [
-                            3,
-                            10
-                        ];
-                    case 9:
-                        try {
-                            if (!_iteratorNormalCompletion && _iterator.return != null) {
-                                _iterator.return();
-                            }
-                        } finally{
-                            if (_didIteratorError) {
-                                throw _iteratorError;
-                            }
-                        }
-                        return [
-                            7
-                        ];
-                    case 10:
                         return [
                             2
                         ];
@@ -1945,9 +1933,7 @@ function findVisibleCells(objc) {
     function reset(cell) {
         forget(cell);
         if (clear) {
-            void objc.invokeAsync(cell, 'setBackgroundColor:', [
-                clear
-            ]).catch(function() {
+            void setBackground(cell, clear).catch(function() {
                 return undefined;
             });
         }
@@ -1990,7 +1976,12 @@ function findVisibleCells(objc) {
                                 showSelectionWarning('Range selection', "Skipped ".concat(result.skipped, " message").concat(result.skipped === 1 ? '' : 's', " you can't delete."));
                             }
                         }
+                        // Update the counter first, then paint in the background: awaiting native calls before the
+                        // toast made every tap feel delayed.
                         refreshSelectionToast();
+                        void paint(cell, true).catch(function() {
+                            return undefined;
+                        });
                         return [
                             2
                         ];
@@ -1998,92 +1989,77 @@ function findVisibleCells(objc) {
             });
         })();
     }
-    try {
-        var options = {
-            coalesce: 'receiver',
-            payload: {
-                receiver: true,
-                arguments: []
-            }
-        };
-        hooks.push(objc.hook(MESSAGE_CELL, 'didMoveToWindow', {
-            after: function after(param) {
-                var self = param.self;
-                if (self) {
-                    remember(self);
-                    void paint(self).catch(function() {
-                        return undefined;
-                    });
-                }
-            }
-        }, options), objc.hook(MESSAGE_CELL, 'layoutSubviews', {
-            after: function after(param) {
-                var self = param.self;
-                if (self) void paint(self).catch(function() {
-                    return undefined;
-                });
-            }
-        }, options), objc.hook(MESSAGE_CELL, 'prepareForReuse', {
-            after: function after(param) {
-                var self = param.self;
-                if (self) reset(self);
-            }
-        }), objc.hook(MESSAGE_CELL, 'touchesBegan:withEvent:', {
-            after: function after(param) {
-                var self = param.self;
-                if (!self || !isSelecting()) return;
-                touchStartedAt = Date.now();
-                touchCellKey = cellKey(self, objc);
-                touchMoved = false;
-            }
-        }, options), objc.hook(MESSAGE_CELL, 'touchesMoved:withEvent:', {
-            after: function after() {
-                if (isSelecting()) touchMoved = true;
-            }
-        }, options), objc.hook(MESSAGE_CELL, 'touchesCancelled:withEvent:', {
-            after: function after() {
-                touchMoved = true;
-            }
-        }, options), objc.hook(MESSAGE_CELL, 'touchesEnded:withEvent:', {
-            after: function after(param) {
-                var self = param.self;
-                if (!self || !isSelecting() || touchMoved) return;
-                if (Date.now() - touchStartedAt > 350) return;
-                if (cellKey(self, objc) !== touchCellKey) return;
-                touchCellKey = undefined;
-                void handleNativeTap(self).catch(function() {
-                    return undefined;
-                });
-            }
-        }, options));
-    } catch (error) {
-        logger.warn('Could not hook iOS message cells:', error);
-        var _iteratorNormalCompletion = true, _didIteratorError = false, _iteratorError = undefined;
+    var options = {
+        coalesce: 'receiver',
+        payload: {
+            receiver: true,
+            arguments: []
+        }
+    };
+    var hook = function hook(selector, handlers) {
         try {
-            for(var _iterator = hooks.splice(0)[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true){
-                var hook = _step.value;
-                try {
-                    hook.remove();
-                } catch (unused) {
-                // The scope may have removed it already.
-                }
-            }
-        } catch (err) {
-            _didIteratorError = true;
-            _iteratorError = err;
-        } finally{
-            try {
-                if (!_iteratorNormalCompletion && _iterator.return != null) {
-                    _iterator.return();
-                }
-            } finally{
-                if (_didIteratorError) {
-                    throw _iteratorError;
-                }
+            hooks.push(objc.hook(MESSAGE_CELL, selector, handlers, options));
+        } catch (error) {
+            // One unsupported selector must not take the rest of the hooks down with it.
+            logger.warn("Could not hook ".concat(selector, ":"), error);
+        }
+    };
+    hook('didMoveToWindow', {
+        after: function after(param) {
+            var self = param.self;
+            if (self) {
+                remember(self);
+                void paint(self, true).catch(function() {
+                    return undefined;
+                });
             }
         }
-        return;
-    }
+    });
+    hook('layoutSubviews', {
+        after: function after(param) {
+            var self = param.self;
+            if (self) void paint(self).catch(function() {
+                return undefined;
+            });
+        }
+    });
+    hook('prepareForReuse', {
+        after: function after(param) {
+            var self = param.self;
+            if (self) reset(self);
+        }
+    });
+    hook('touchesBegan:withEvent:', {
+        after: function after(param) {
+            var self = param.self;
+            if (!self || !isSelecting()) return;
+            touchStartedAt = Date.now();
+            touchCellKey = cellKey(self, objc);
+            touchMoved = false;
+        }
+    });
+    hook('touchesMoved:withEvent:', {
+        after: function after() {
+            if (isSelecting()) touchMoved = true;
+        }
+    });
+    hook('touchesCancelled:withEvent:', {
+        after: function after() {
+            touchMoved = true;
+        }
+    });
+    hook('touchesEnded:withEvent:', {
+        after: function after(param) {
+            var self = param.self;
+            if (!self || !isSelecting() || touchMoved) return;
+            if (Date.now() - touchStartedAt > 350) return;
+            if (cellKey(self, objc) !== touchCellKey) return;
+            touchCellKey = undefined;
+            void handleNativeTap(self).catch(function() {
+                return undefined;
+            });
+        }
+    });
     var unsubscribe = subscribe(function() {
         void refresh();
         // A sheet closing or the list relayouting can reset cell backgrounds after the first paint.
@@ -2155,9 +2131,7 @@ function findVisibleCells(objc) {
                             ];
                             return [
                                 4,
-                                objc.invokeAsync(cell, 'setBackgroundColor:', [
-                                    clear
-                                ]).catch(function() {
+                                setBackground(cell, clear).catch(function() {
                                     return undefined;
                                 })
                             ];
@@ -2294,7 +2268,7 @@ function _object_spread_props(target, source) {
 }var stopMessageSheet;
 var stopMessageTaps;
 var stopNativeHighlight;
-var stopChannelWatch;
+var stopChannelWatch = [];
 function onChannelSelect() {
     exitSelection();
 }
@@ -2310,12 +2284,27 @@ function onChannelSelect() {
         void confirmAndDelete();
     });
     try {
-        var _globalThis_unbound, _flux_onAction;
+        var _globalThis_unbound;
         var flux = (_globalThis_unbound = globalThis.unbound) === null || _globalThis_unbound === void 0 ? void 0 : _globalThis_unbound.flux;
-        var remove = flux === null || flux === void 0 ? void 0 : (_flux_onAction = flux.onAction) === null || _flux_onAction === void 0 ? void 0 : _flux_onAction.call(flux, 'CHANNEL_SELECT', onChannelSelect);
-        if (typeof remove === 'function') {
-            stopChannelWatch = remove;
+        var cleanups = [];
+        try {
+            var _flux_onAction;
+            var offAction = flux === null || flux === void 0 ? void 0 : (_flux_onAction = flux.onAction) === null || _flux_onAction === void 0 ? void 0 : _flux_onAction.call(flux, 'CHANNEL_SELECT', onChannelSelect);
+            if (typeof offAction === 'function') cleanups.push(offAction);
+        } catch (unused) {
+        // Older builds only carry one of the two ways to watch the channel.
         }
+        // Leaving a chat does not always dispatch CHANNEL_SELECT; the selected channel store does
+        // change, so watch that as well. It takes the store object, not its name.
+        try {
+            var _flux_getStore, _flux_onStoreChange;
+            var store = flux === null || flux === void 0 ? void 0 : (_flux_getStore = flux.getStore) === null || _flux_getStore === void 0 ? void 0 : _flux_getStore.call(flux, 'SelectedChannel');
+            var offStore = store ? flux === null || flux === void 0 ? void 0 : (_flux_onStoreChange = flux.onStoreChange) === null || _flux_onStoreChange === void 0 ? void 0 : _flux_onStoreChange.call(flux, store, onChannelSelect) : undefined;
+            if (typeof offStore === 'function') cleanups.push(offStore);
+        } catch (unused) {
+        // The action above still covers builds without a usable store watcher.
+        }
+        stopChannelWatch = cleanups;
     } catch (error) {
         logger.warn('Could not watch channel changes:', error);
     }
@@ -2330,11 +2319,30 @@ function stopMultiSelect() {
     stopMessageTaps = undefined;
     stopNativeHighlight = undefined;
     try {
-        stopChannelWatch === null || stopChannelWatch === void 0 ? void 0 : stopChannelWatch();
+        var _iteratorNormalCompletion = true, _didIteratorError = false, _iteratorError = undefined;
+        try {
+            for(var _iterator = stopChannelWatch[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true){
+                var cleanup = _step.value;
+                cleanup();
+            }
+        } catch (err) {
+            _didIteratorError = true;
+            _iteratorError = err;
+        } finally{
+            try {
+                if (!_iteratorNormalCompletion && _iterator.return != null) {
+                    _iterator.return();
+                }
+            } finally{
+                if (_didIteratorError) {
+                    throw _iteratorError;
+                }
+            }
+        }
     } catch (unused) {
     // The dispatcher may be gone while Discord shuts down.
     }
-    stopChannelWatch = undefined;
+    stopChannelWatch = [];
     setDeleteSelectedAction(undefined);
     exitSelection();
 }function start(context) {

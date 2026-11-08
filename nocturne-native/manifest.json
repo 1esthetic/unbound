@@ -1,7 +1,7 @@
 {
 	"id": "1esthetic.nocturne-native",
 	"name": "Nocturne Native",
-	"description": "Recolours Discord's native swipe-to-reply indicator to match the Nocturne theme.",
+	"description": "Recolours Discord's native swipe-to-reply indicator to match the Nocturne theme. iPhone and iPad only.",
 	"authors": [
 		{
 			"name": "1esthetic",
